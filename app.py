@@ -2,63 +2,68 @@ import streamlit as st
 import pandas as pd
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
+import io
 
 st.set_page_config(page_title="مكتب الحسنين - جرد الحساسات", layout="wide")
 
 st.title("نظام جرد الحساسات التفاعلي - الطابق الأول")
 st.write("انقر على موقع الحساس في المخطط لتسجيل رقمه (واقع الحال)")
 
-# تحميل صورة المخطط مع التأكد من وجودها
-try:
-    bg_image = Image.open("floor_plan.png")
-except FileNotFoundError:
-    st.error("خطأ: لم يتم العثور على ملف floor_plan.png. تأكد من رفعه على GitHub بنفس المجلد.")
-    st.stop()
+# وظيفة لتحميل الصورة بشكل متوافق مع Streamlit Cloud
+def load_image(image_path):
+    try:
+        img = Image.open(image_path)
+        # تحويل الصورة لتكون متوافقة مع العرض
+        return img
+    except FileNotFoundError:
+        return None
 
-# إعدادات لوحة الرسم التفاعلية (نسخة محدثة)
-canvas_result = st_canvas(
-    fill_color="rgba(255, 165, 0, 0.3)",
-    stroke_width=2,
-    background_image=bg_image,
-    update_streamlit=True,
-    height=bg_image.height,
-    width=bg_image.width,
-    drawing_mode="point",
-    point_display_radius=5,
-    key="canvas",
-)
+bg_image = load_image("floor_plan.png")
 
-# معالجة البيانات المسجلة
-if canvas_result.json_data is not None:
-    objects = pd.json_normalize(canvas_result.json_data["objects"])
-    if not objects.empty:
-        st.subheader("قائمة الحساسات المسجلة")
-        
-        # إنشاء جدول لتخزين أرقام الحساسات
-        if 'sensor_data' not in st.session_state:
-            st.session_state.sensor_data = {}
+if bg_image:
+    # إعدادات لوحة الرسم التفاعلية المحدثة
+    canvas_result = st_canvas(
+        fill_color="rgba(255, 165, 0, 0.3)",
+        stroke_width=2,
+        background_image=bg_image,
+        update_streamlit=True,
+        height=bg_image.height,
+        width=bg_image.width,
+        drawing_mode="point",
+        point_display_radius=5,
+        key="fire_alarm_canvas",
+    )
 
-        for index, row in objects.iterrows():
-            pos_key = f"{row['left']}_{row['top']}"
-            st.session_state.sensor_data[pos_key] = st.text_input(
-                f"أدخل رقم الحساس للنقطة في الموقع ({int(row['left'])}, {int(row['top'])}):", 
-                value=st.session_state.sensor_data.get(pos_key, ""),
-                key=f"input_{pos_key}"
-            )
-        
-        # تحويل البيانات لجدول قابل للتصدير
-        export_data = []
-        for index, row in objects.iterrows():
-            pos_key = f"{row['left']}_{row['top']}"
-            export_data.append({
-                "X": row['left'],
-                "Y": row['top'],
-                "Sensor_ID": st.session_state.sensor_data.get(pos_key, "")
-            })
-        
-        df_final = pd.DataFrame(export_data)
-        st.dataframe(df_final)
+    # معالجة البيانات المسجلة
+    if canvas_result.json_data is not None:
+        objects = pd.json_normalize(canvas_result.json_data["objects"])
+        if not objects.empty:
+            st.subheader("قائمة الحساسات المسجلة")
+            
+            # استخدام session_state لحفظ الأرقام أثناء العمل
+            if 'sensors' not in st.session_state:
+                st.session_state.sensors = {}
 
-        if st.button("تصدير جدول الحساسات إلى Excel"):
-            df_final.to_excel("sensor_audit.xlsx", index=False)
-            st.success("تم حفظ الملف باسم sensor_audit.xlsx")
+            export_data = []
+            for index, row in objects.iterrows():
+                key = f"pt_{index}"
+                st.session_state.sensors[key] = st.text_input(
+                    f"رقم الحساس للنقطة {index+1}:", 
+                    value=st.session_state.sensors.get(key, ""),
+                    key=f"input_{key}"
+                )
+                export_data.append({
+                    "رقم اللوب والحساس": st.session_state.sensors[key],
+                    "إحداثيات X": row['left'],
+                    "إحداثيات Y": row['top']
+                })
+            
+            df = pd.DataFrame(export_data)
+            st.table(df)
+
+            # تصدير البيانات
+            if st.button("تصدير الجدول إلى Excel"):
+                df.to_excel("audit_results.xlsx", index=False)
+                st.success("تم حفظ النتائج في ملف audit_results.xlsx")
+else:
+    st.error("لم يتم العثory على ملف floor_plan.png. تأكد من وجود الصورة في المستودع بنفس الاسم.")
