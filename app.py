@@ -1,67 +1,50 @@
 import streamlit as st
 import pandas as pd
-from streamlit_drawable_canvas import st_canvas
 from PIL import Image
-import base64
-from io import BytesIO
 
 st.set_page_config(page_title="مكتب الحسنين - جرد الحساسات", layout="wide")
 
-st.title("نظام جرد الحساسات التفاعلي - الطابق الأول")
-st.write("انقر على موقع الحساس في المخطط لتسجيل رقمه (واقع الحال)")
+st.title("نظام جرد الحساسات - الطابق الأول")
+st.info("قم بمعاينة المخطط أدناه، ثم سجل أرقام الحساسات حسب واقع الحال")
 
-# وظيفة لفتح الصورة وتجاوز خطأ التوافق في الـ Cloud
-def get_image(path):
-    try:
-        return Image.open(path)
-    except:
-        return None
+# 1. عرض المخطط للمعاينة فقط
+try:
+    img = Image.open("floor_plan.png")
+    st.image(img, caption="مخطط الطابق الأول - مكتب الحسنين", use_container_width=True)
+except:
+    st.error("تنبيه: لم يتم العثور على صورة floor_plan.png")
 
-img = get_image("floor_plan.png")
+st.divider()
 
-if img:
-    # إعدادات اللوحة التفاعلية
-    canvas_result = st_canvas(
-        fill_color="rgba(255, 165, 0, 0.3)",
-        stroke_width=2,
-        background_image=img,
-        update_streamlit=True,
-        height=img.height,
-        width=img.width,
-        drawing_mode="point",
-        point_display_radius=6,
-        key="fire_alarm_final",
-    )
+# 2. واجهة إدخال البيانات (واقع الحال)
+st.subheader("تسجيل الحساسات المربوطة فعلياً")
 
-    if canvas_result.json_data is not None:
-        objects = pd.json_normalize(canvas_result.json_data["objects"])
-        if not objects.empty:
-            st.subheader("سجل الحساسات (واقع الحال)")
-            
-            # حفظ البيانات في الذاكرة المؤقتة
-            if 'audit_data' not in st.session_state:
-                st.session_state.audit_data = {}
+# استخدام session_state لحفظ القائمة
+if 'sensor_list' not in st.session_state:
+    st.session_state.sensor_list = []
 
-            results = []
-            for i, row in objects.iterrows():
-                # إدخال رقم الحساس
-                label = f"حساس موقع {i+1} (X:{int(row['left'])}, Y:{int(row['top'])}):"
-                val = st.text_input(label, key=f"s_{i}", value=st.session_state.audit_data.get(f"s_{i}", ""))
-                st.session_state.audit_data[f"s_{i}"] = val
-                
-                results.append({
-                    "التسلسل": i + 1,
-                    "رقم الحساس (واقع الحال)": val,
-                    "الإحداثي الأفقي": row['left'],
-                    "الإحداثي الرأسي": row['top']
-                })
-            
-            df = pd.DataFrame(results)
-            st.table(df)
+# نموذج إضافة حساس جديد
+with st.form("sensor_form"):
+    col1, col2 = st.columns(2)
+    with col1:
+        s_id = st.text_input("رقم الحساس (مثال: 4.12)")
+    with col2:
+        s_note = st.text_input("ملاحظات (مثال: الغرفة رقم 5)")
+    
+    submit = st.form_submit_button("إضافة الحساس للقائمة")
+    if submit and s_id:
+        st.session_state.sensor_list.append({"رقم الحساس": s_id, "الملاحظات": s_note})
 
-            # زر الحفظ وتصدير الملف
-            if st.button("تصدير إلى Excel"):
-                df.to_excel("final_audit.xlsx", index=False)
-                st.success("تم توليد الملف بنجاح باسم final_audit.xlsx")
-else:
-    st.error("تنبيه: لم يتم العثور على صورة المخطط باسم floor_plan.png في المستودع.")
+# 3. عرض الجدول الحالي
+if st.session_state.sensor_list:
+    df = pd.DataFrame(st.session_state.sensor_list)
+    st.table(df)
+    
+    # 4. تصدير البيانات إلى إكسل
+    if st.button("تصدير الجدول إلى Excel"):
+        df.to_excel("sensor_audit_final.xlsx", index=False)
+        st.success("تم حفظ الملف بنجاح")
+
+if st.button("مسح القائمة والبدء من جديد"):
+    st.session_state.sensor_list = []
+    st.rerun()
