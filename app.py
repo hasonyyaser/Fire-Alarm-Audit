@@ -2,64 +2,64 @@ import streamlit as st
 import pandas as pd
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
+import io
 
 st.set_page_config(page_title="مكتب الحسنين - جرد تفاعلي", layout="wide")
 
 st.title("نظام جرد الحساسات - الطابق الأول")
 
-# 1. تحميل الصورة محلياً من المستودع لضمان ظهورها
-try:
-    bg_image = Image.open("floor_plan.png")
-except:
-    st.error("تنبيه: لم يتم العثور على ملف floor_plan.png. تأكد من رفعه في نفس المستودع.")
-    st.stop()
+# دالة لتحميل الصورة بصيغة متوافقة جداً
+def load_and_fix_image(path):
+    try:
+        img = Image.open(path)
+        # تحويل الصورة إلى RGB للتخلص من أي قنوات زائدة (مثل الشفافية في PNG)
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        return img
+    except:
+        return None
 
-# 2. إعداد اللوحة التفاعلية (بإصدار متوافق)
-st.write("انقر على موقع الحساس في المخطط أدناه:")
-canvas_result = st_canvas(
-    fill_color="rgba(255, 165, 0, 0.3)",  # لون النقطة عند النقر
-    stroke_width=2,
-    background_image=bg_image,
-    update_streamlit=True,
-    height=bg_image.height,
-    width=bg_image.width,
-    drawing_mode="point", # وضع النقر فقط
-    point_display_radius=5,
-    key="fire_alarm_audit",
-)
+# حاول تحميل الصورة بالامتداد الجديد
+bg_image = load_and_fix_image("floor_plan.jpg")
 
-# 3. معالجة النقاط التي تم النقر عليها
-if canvas_result.json_data is not None:
-    objects = pd.json_normalize(canvas_result.json_data["objects"])
-    if not objects.empty:
-        st.subheader("سجل الحساسات (واقع الحال)")
-        
-        if 'audit_results' not in st.session_state:
-            st.session_state.audit_results = {}
+if bg_image:
+    st.write("انقر على المخطط لتحديد موقع الحساس:")
+    
+    # استخدام اللوحة التفاعلية
+    canvas_result = st_canvas(
+        fill_color="rgba(255, 165, 0, 0.4)",
+        stroke_width=2,
+        background_image=bg_image, # هنا السطر الحساس، قمنا بتنظيف الصورة قبله
+        update_streamlit=True,
+        height=bg_image.height,
+        width=bg_image.width,
+        drawing_mode="point",
+        point_display_radius=5,
+        key="fire_alarm_final_fix",
+    )
 
-        final_data = []
-        for index, row in objects.iterrows():
-            # إنشاء مفتاح فريد لكل نقطة بناءً على مكانها
-            pos_id = f"pos_{int(row['left'])}_{int(row['top'])}"
+    if canvas_result.json_data is not None:
+        objects = pd.json_normalize(canvas_result.json_data["objects"])
+        if not objects.empty:
+            st.subheader("تسجيل الحساسات (واقع الحال)")
             
-            # حقل إدخال رقم الحساس بجانب إحداثياته
-            val = st.text_input(
-                f"أدخل رقم الحساس للنقطة في الموقع ({int(row['left'])}, {int(row['top'])}):",
-                key=pos_id,
-                value=st.session_state.audit_results.get(pos_id, "")
-            )
-            st.session_state.audit_results[pos_id] = val
+            if 'results' not in st.session_state:
+                st.session_state.results = {}
+
+            export_list = []
+            for i, row in objects.iterrows():
+                key = f"pt_{int(row['left'])}_{int(row['top'])}"
+                val = st.text_input(f"رقم الحساس في الموقع ({int(row['left'])}, {int(row['top'])}):", 
+                                   key=key, value=st.session_state.results.get(key, ""))
+                st.session_state.results[key] = val
+                
+                export_list.append({"رقم الحساس": val, "X": row['left'], "Y": row['top']})
             
-            final_data.append({
-                "رقم الحساس": val,
-                "إحداثي X": row['left'],
-                "إحداثي Y": row['top']
-            })
+            df = pd.DataFrame(export_list)
+            st.dataframe(df)
 
-        # 4. عرض الجدول وتصديره
-        df = pd.DataFrame(final_data)
-        st.dataframe(df)
-
-        if st.button("تصدير النتائج إلى Excel"):
-            df.to_excel("sensor_audit_final.xlsx", index=False)
-            st.success("تم توليد الملف بنجاح")
+            if st.button("حفظ الجدول النهائي"):
+                df.to_excel("audit_report.xlsx", index=False)
+                st.success("تم الحفظ!")
+else:
+    st.error("تنبيه: لم يتم العثور على floor_plan.jpg. يرجى التأكد من تغيير الامتداد ورفع الملف.")
