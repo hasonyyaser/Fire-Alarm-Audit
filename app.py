@@ -2,58 +2,60 @@ import streamlit as st
 import pandas as pd
 from PIL import Image
 
-st.set_page_config(page_title="مكتب الحسنين - جرد تفاعلي", layout="wide")
+st.set_page_config(page_title="مكتب الحسنين - جرد الحساسات", layout="wide")
 
-st.title("نظام جرد الحساسات التفاعلي - الطابق الأول")
-st.write("انقر على موقع الحساس في المخطط لتسجيل رقمه")
+st.title("نظام جرد الحساسات - الطابق الأول")
 
-# 1. تحميل صورة المخطط (تأكد من وجود الملف floor_plan.jpg أو png)
-image_path = "floor_plan.jpg" 
+# 1. عرض المخطط كمرجع بصري (بدون مكتبات تفاعلية معقدة)
 try:
-    img = Image.open(image_path)
+    img = Image.open("floor_plan.png")
+    st.image(img, caption="مخطط الحريق - الطابق الأول", use_container_width=True)
 except:
-    image_path = "floor_plan.png"
-    try:
-        img = Image.open(image_path)
-    except:
-        st.error("لم يتم العثور على صورة المخطط. تأكد من رفعها باسم floor_plan.jpg أو floor_plan.png")
-        st.stop()
+    st.error("يرجى التأكد من وجود ملف floor_plan.png في المستودع")
 
-# 2. عرض المخطط واستقبال إحداثيات النقر مباشرة
-# هذه الخاصية (label_visibility) تجعل الصورة قابلة للنقر وتخزن الإحداثيات في 'value'
-clicked_coords = st.image(img, use_container_width=True)
+st.divider()
 
-# 3. إعداد مخزن البيانات
-if 'sensor_records' not in st.session_state:
-    st.session_state.sensor_list = []
+# 2. واجهة إدخال البيانات (واقع الحال)
+st.subheader("تسجيل بيانات الحساسات ميدانياً")
 
-# 4. واجهة إدخال البيانات في القائمة الجانبية
-with st.sidebar:
-    st.header("إضافة حساس جديد")
-    st.info("سجل الرقم والملاحظات بناءً على ما جردته في الموقع")
+if 'sensor_data' not in st.session_state:
+    st.session_state.sensor_data = []
+
+# نموذج الإدخال
+with st.form("audit_form", clear_on_submit=True):
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        loop = st.selectbox("اللوب (Loop)", ["3", "4", "5"])
+    with col2:
+        addr = st.text_input("رقم الحساس (Address)")
+    with col3:
+        s_type = st.selectbox("النوع", ["Smoke", "Heat", "MCP", "Sounder", "Module"])
     
-    new_id = st.text_input("رقم الحساس (مثلاً: 4.15)")
-    new_note = st.text_area("ملاحظات الموقع")
+    note = st.text_input("وصف الموقع (مثلاً: غرفة المدير، الممر الرئيسي)")
     
-    if st.button("حفظ الحساس في القائمة"):
-        if new_id:
-            st.session_state.sensor_list.append({
-                "العنوان (Address)": new_id,
-                "الملاحظات": new_note
+    if st.form_submit_button("إضافة الحساس للقائمة"):
+        if addr:
+            st.session_state.sensor_data.append({
+                "العنوان الكامل": f"{loop}.{addr}",
+                "النوع": s_type,
+                "الموقع/الملاحظات": note
             })
-            st.success(f"تم إضافة الحساس {new_id}")
+            st.success(f"تم تسجيل الحساس {loop}.{addr}")
 
-# 5. عرض النتائج وتصديرها
-if st.session_state.sensor_list:
-    df = pd.DataFrame(st.session_state.sensor_list)
-    st.subheader("جدول الجرد الحالي")
+# 3. عرض الجدول وتصديره
+if st.session_state.sensor_data:
+    df = pd.DataFrame(st.session_state.sensor_data)
     st.dataframe(df, use_container_width=True)
     
-    if st.button("تصدير إلى Excel"):
-        df.to_excel("sensor_audit.xlsx", index=False)
-        with open("sensor_audit.xlsx", "rb") as f:
-            st.download_button("تحميل ملف الإكسل", f, file_name="sensor_audit.xlsx")
+    # زر الحفظ المباشر
+    csv = df.to_csv(index=False).encode('utf-8-sig')
+    st.download_button(
+        label="تحميل ملف الجرد (CSV) للاكسل",
+        data=csv,
+        file_name='fire_alarm_audit.csv',
+        mime='text/csv',
+    )
 
-if st.button("مسح الجدول والبدء من جديد"):
-    st.session_state.sensor_list = []
+if st.button("مسح البيانات والبدء من جديد"):
+    st.session_state.sensor_data = []
     st.rerun()
